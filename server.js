@@ -21,6 +21,8 @@ const STREAM_INTERVAL_MS = parseInt(process.env.STREAM_INTERVAL_MS, 10) || 1000
 const PASSCODE = process.env.PASSCODE || ''
 const ACCESS_TTL_HOURS = parseInt(process.env.ACCESS_TTL_HOURS, 10) || 24
 const ACCESS_TTL_MS = ACCESS_TTL_HOURS * 60 * 60 * 1000
+const SESSION_STORE_DIR = process.env.SESSION_STORE_DIR || '.data'
+const SESSION_STORE_FILE = process.env.SESSION_STORE_FILE || 'sessions.json'
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')))
@@ -37,7 +39,9 @@ if (!PASSCODE) {
 
 const accessService = new DeviceAccessService({
   passcode: PASSCODE,
-  sessionTtlMs: ACCESS_TTL_MS
+  sessionTtlMs: ACCESS_TTL_MS,
+  storeDir: path.join(__dirname, SESSION_STORE_DIR),
+  storeFile: SESSION_STORE_FILE
 })
 const requireAuth = createRequireAuth(accessService)
 registerAuthRoutes(app, accessService)
