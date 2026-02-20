@@ -58,6 +58,11 @@ const COMMANDS = {
     script: 'scripts/new_chat.applescript',
     waitMs: 500,
     description: 'Open a new chat'
+  },
+  '#stop': {
+    script: 'scripts/stop_response.applescript',
+    waitMs: 200,
+    description: 'Stop current response'
   }
   // Add future commands here
 }
