@@ -2,7 +2,7 @@ require('dotenv').config()
 
 const express = require('express')
 const path = require('path')
-const { exec } = require('child_process')
+const { exec, execFile } = require('child_process')
 const { DeviceAccessService } = require('./auth/deviceAccessService')
 const { createRequireAuth } = require('./auth/authMiddleware')
 const { registerAuthRoutes } = require('./auth/authRoutes')
@@ -70,18 +70,21 @@ const COMMANDS = {
     description: 'Clear current input box'
   },
   '#up': {
-    script: 'scripts/scroll_up.applescript',
-    waitMs: 200,
+    executable: 'swift',
+    args: ['scripts/navigate_main_view.swift', 'up'],
+    waitMs: 80,
     description: 'Scroll up (4x up arrow)'
   },
   '#down': {
-    script: 'scripts/scroll_down.applescript',
-    waitMs: 200,
+    executable: 'swift',
+    args: ['scripts/navigate_main_view.swift', 'down'],
+    waitMs: 80,
     description: 'Scroll down (4x down arrow)'
   },
   '#end': {
-    script: 'scripts/jump_to_end.applescript',
-    waitMs: 200,
+    executable: 'swift',
+    args: ['scripts/navigate_main_view.swift', 'end'],
+    waitMs: 80,
     description: 'Jump to end (Cmd + Down)'
   }
   // Add future commands here
@@ -131,6 +134,21 @@ async function sendDoneNotification() {
   } catch (err) {
     console.error('[NTFY] Error sending done notification:', err)
   }
+}
+
+function runMappedCommand(commandConfig, callback) {
+  if (commandConfig.script) {
+    execFile('osascript', [commandConfig.script], { cwd: __dirname }, callback)
+    return
+  }
+
+  if (commandConfig.executable) {
+    const args = Array.isArray(commandConfig.args) ? commandConfig.args : []
+    execFile(commandConfig.executable, args, { cwd: __dirname }, callback)
+    return
+  }
+
+  callback(new Error('Invalid command configuration'))
 }
 
 function processMessage(message) {
@@ -183,11 +201,26 @@ function processMessage(message) {
 
   if (matchedCommand) {
     console.log(`[CMD] Executing command: ${matchedCommand.description}`)
-    exec(`osascript ${matchedCommand.script}`, (error) => {
+    runMappedCommand(matchedCommand, (error, stdout, stderr) => {
       if (error) {
         console.error('[CMD] Error executing command script:', error)
+        if (stderr) {
+          console.error(`[CMD] stderr: ${String(stderr).trim()}`)
+        }
         isProcessing = false
         return
+      }
+      if (stderr) {
+        const trimmed = String(stderr).trim()
+        if (trimmed) {
+          console.warn(`[CMD] stderr: ${trimmed}`)
+        }
+      }
+      if (stdout) {
+        const trimmed = String(stdout).trim()
+        if (trimmed) {
+          console.log(`[CMD] output: ${trimmed}`)
+        }
       }
 
       if (textToType) {
