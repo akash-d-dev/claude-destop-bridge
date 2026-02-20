@@ -67,6 +67,11 @@
             gap: 10px;
             margin-bottom: 10px;
         }
+        #streamControls button {
+            max-width: none;
+            width: auto;
+            flex: 1;
+        }
         #toggleStreamBtn {
             background-color: #111827;
             margin: 0;
@@ -84,6 +89,29 @@
         #fullscreenStreamBtn:disabled {
             background-color: #9ca3af;
             cursor: not-allowed;
+        }
+        #windowPickerRow {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        #windowSelect {
+            flex: 1;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            min-width: 0;
+        }
+        #refreshWindowsBtn {
+            background-color: #4b5563;
+            max-width: none;
+            width: auto;
+            flex: 0 0 auto;
+            margin: 0;
+        }
+        #refreshWindowsBtn:hover {
+            background-color: #374151;
         }
         #streamStatus {
             font-size: 13px;
@@ -110,6 +138,12 @@
             <button id="toggleStreamBtn">Start Live View</button>
             <button id="fullscreenStreamBtn" disabled>Full Screen</button>
         </div>
+        <div id="windowPickerRow">
+            <select id="windowSelect">
+                <option value="">Auto (Claude window)</option>
+            </select>
+            <button id="refreshWindowsBtn">Refresh Windows</button>
+        </div>
         <div id="streamStatus">Live view is off.</div>
         <img id="streamFrame" alt="Claude live stream preview">
     </div>
@@ -120,6 +154,8 @@
         const statusDiv = document.getElementById('status');
         const toggleStreamBtn = document.getElementById('toggleStreamBtn');
         const fullscreenStreamBtn = document.getElementById('fullscreenStreamBtn');
+        const refreshWindowsBtn = document.getElementById('refreshWindowsBtn');
+        const windowSelect = document.getElementById('windowSelect');
         const streamStatusDiv = document.getElementById('streamStatus');
         const streamFrame = document.getElementById('streamFrame');
         let doneDelayMs = 2000;
@@ -127,6 +163,8 @@
         let fallbackTimer = null;
         let streamRefreshTimer = null;
         let streamEnabled = false;
+        let currentStreamMode = 'screen';
+        let selectedWindow = null;
 
         function markDoneFromUiFallback() {
             statusDiv.textContent = "Done — check Claude app";
@@ -139,6 +177,30 @@
 
         function updateFullscreenButtonLabel() {
             fullscreenStreamBtn.textContent = getFullscreenElement() ? 'Exit Full Screen' : 'Full Screen';
+        }
+
+        function modeToLabel(mode) {
+            if (mode === 'selected-window') return 'Selected window';
+            if (mode === 'claude-window' || mode === 'window') return 'Claude window';
+            return 'Screen fallback';
+        }
+
+        function selectedWindowToLabel(windowInfo) {
+            if (!windowInfo) return 'Auto (Claude window)';
+            if (windowInfo.title) {
+                return `${windowInfo.appName} — ${windowInfo.title}`;
+            }
+            return windowInfo.appName || `Window #${windowInfo.id}`;
+        }
+
+        function updateStreamStatusText() {
+            const modeText = modeToLabel(currentStreamMode);
+            const targetText = selectedWindowToLabel(selectedWindow);
+            if (streamEnabled) {
+                streamStatusDiv.textContent = `Live view is on (${modeText}). Target: ${targetText}.`;
+                return;
+            }
+            streamStatusDiv.textContent = `Live view is off. Target: ${targetText}.`;
         }
 
         async function enterStreamFullscreen() {
@@ -163,21 +225,28 @@
             }
         }
 
-        function setStreamUiState(running, mode) {
+        function setStreamUiState(running, mode, selectedWindowOverride) {
             streamEnabled = running;
+            if (mode) {
+                currentStreamMode = mode;
+            }
+            if (typeof selectedWindowOverride !== 'undefined') {
+                selectedWindow = selectedWindowOverride;
+            }
+
             toggleStreamBtn.textContent = running ? 'Stop Live View' : 'Start Live View';
             fullscreenStreamBtn.disabled = !running;
+
             if (running) {
-                const modeText = mode === 'window' ? 'Claude window' : 'Screen fallback';
-                streamStatusDiv.textContent = `Live view is on (${modeText}).`;
                 streamFrame.style.display = 'block';
-                return;
+            } else {
+                exitStreamFullscreen().catch(() => {});
+                streamFrame.style.display = 'none';
+                streamFrame.removeAttribute('src');
+                updateFullscreenButtonLabel();
             }
-            exitStreamFullscreen().catch(() => {});
-            streamStatusDiv.textContent = 'Live view is off.';
-            streamFrame.style.display = 'none';
-            streamFrame.removeAttribute('src');
-            updateFullscreenButtonLabel();
+
+            updateStreamStatusText();
         }
 
         function refreshStreamFrame() {
@@ -192,13 +261,82 @@
             streamRefreshTimer = setInterval(refreshStreamFrame, streamIntervalMs);
         }
 
+        function populateWindowSelect(windows, selectedWindowId) {
+            windowSelect.innerHTML = '';
+
+            const autoOption = document.createElement('option');
+            autoOption.value = '';
+            autoOption.textContent = 'Auto (Claude window)';
+            windowSelect.appendChild(autoOption);
+
+            windows.forEach((windowInfo) => {
+                const option = document.createElement('option');
+                option.value = String(windowInfo.id);
+                const label = windowInfo.title
+                    ? `${windowInfo.appName} — ${windowInfo.title}`
+                    : windowInfo.appName;
+                option.textContent = `${label} (#${windowInfo.id})`;
+                windowSelect.appendChild(option);
+            });
+
+            if (selectedWindowId) {
+                windowSelect.value = String(selectedWindowId);
+            } else {
+                windowSelect.value = '';
+            }
+        }
+
+        async function loadWindowOptions() {
+            const response = await fetch('/stream/windows');
+            if (!response.ok) {
+                throw new Error('Failed to load windows');
+            }
+
+            const payload = await response.json();
+            const windows = Array.isArray(payload.windows) ? payload.windows : [];
+            const selectedWindowId = payload.selectedWindowId || null;
+            populateWindowSelect(windows, selectedWindowId);
+
+            if (selectedWindowId) {
+                selectedWindow = windows.find((item) => item.id === selectedWindowId) || null;
+            } else {
+                selectedWindow = null;
+            }
+            updateStreamStatusText();
+        }
+
+        async function setWindowSelection(windowId) {
+            const response = await fetch('/stream/select-window', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ windowId })
+            });
+
+            if (!response.ok) {
+                let message = 'Failed to select window';
+                try {
+                    const errorPayload = await response.json();
+                    if (errorPayload && errorPayload.error) {
+                        message = errorPayload.error;
+                    }
+                } catch {
+                    // Ignore JSON parsing error.
+                }
+                throw new Error(message);
+            }
+
+            const payload = await response.json();
+            setStreamUiState(Boolean(payload.running), payload.mode, payload.selectedWindow || null);
+            refreshStreamFrame();
+        }
+
         async function startStream() {
             const response = await fetch('/stream/start', { method: 'POST' });
             if (!response.ok) {
                 throw new Error('Failed to start stream');
             }
             const payload = await response.json();
-            setStreamUiState(true, payload.mode);
+            setStreamUiState(true, payload.mode, payload.selectedWindow || null);
             refreshStreamFrame();
             startFrameTimer();
         }
@@ -208,11 +346,12 @@
             if (!response.ok) {
                 throw new Error('Failed to stop stream');
             }
+            const payload = await response.json();
             if (streamRefreshTimer) {
                 clearInterval(streamRefreshTimer);
                 streamRefreshTimer = null;
             }
-            setStreamUiState(false);
+            setStreamUiState(false, payload.mode, payload.selectedWindow || null);
         }
 
         async function initStreamStatus() {
@@ -220,7 +359,8 @@
                 const response = await fetch('/stream/status');
                 if (!response.ok) return;
                 const status = await response.json();
-                setStreamUiState(Boolean(status.running), status.mode);
+                setStreamUiState(Boolean(status.running), status.mode, status.selectedWindow || null);
+                await loadWindowOptions();
                 if (status.running) {
                     refreshStreamFrame();
                     startFrameTimer();
@@ -261,6 +401,38 @@
                 streamStatusDiv.textContent = 'Fullscreen is not supported on this browser.';
             } finally {
                 fullscreenStreamBtn.disabled = !streamEnabled;
+            }
+        });
+
+        refreshWindowsBtn.addEventListener('click', async () => {
+            refreshWindowsBtn.disabled = true;
+            windowSelect.disabled = true;
+            try {
+                await loadWindowOptions();
+            } catch (error) {
+                console.error('Error refreshing windows:', error);
+                streamStatusDiv.textContent = 'Unable to refresh window list.';
+            } finally {
+                refreshWindowsBtn.disabled = false;
+                windowSelect.disabled = false;
+            }
+        });
+
+        windowSelect.addEventListener('change', async () => {
+            const rawValue = windowSelect.value;
+            const windowId = rawValue ? Number(rawValue) : null;
+
+            windowSelect.disabled = true;
+            refreshWindowsBtn.disabled = true;
+            try {
+                await setWindowSelection(windowId);
+            } catch (error) {
+                console.error('Error selecting stream window:', error);
+                streamStatusDiv.textContent = `Unable to select window: ${error.message}`;
+                await loadWindowOptions();
+            } finally {
+                windowSelect.disabled = false;
+                refreshWindowsBtn.disabled = false;
             }
         });
 
