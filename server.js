@@ -52,17 +52,6 @@ const screenStreamService = new ClaudeScreenStreamService({
 })
 registerStreamRoutes(app, screenStreamService, requireAuth)
 
-// Expose configuration to the frontend
-app.get('/config', requireAuth, (req, res) => {
-  console.log(`[HTTP] GET /config -> ntfyTopic=${NTFY_TOPIC}`)
-  res.json({
-    ntfyTopic: NTFY_TOPIC,
-    doneDelayMs: DONE_DELAY_MS,
-    streamIntervalMs: STREAM_INTERVAL_MS,
-    accessTtlMs: ACCESS_TTL_MS
-  })
-})
-
 // Centralized commands mapping
 const COMMANDS = {
   '#new': {
@@ -72,6 +61,23 @@ const COMMANDS = {
   }
   // Add future commands here
 }
+
+const COMMAND_OPTIONS = Object.entries(COMMANDS).map(([key, config]) => ({
+  key,
+  description: config.description || key
+}))
+
+// Expose configuration to the frontend
+app.get('/config', requireAuth, (req, res) => {
+  console.log(`[HTTP] GET /config -> ntfyTopic=${NTFY_TOPIC}`)
+  res.json({
+    ntfyTopic: NTFY_TOPIC,
+    doneDelayMs: DONE_DELAY_MS,
+    streamIntervalMs: STREAM_INTERVAL_MS,
+    accessTtlMs: ACCESS_TTL_MS,
+    commandOptions: COMMAND_OPTIONS
+  })
+})
 
 // Track if Claude is currently processing a message
 let isProcessing = false
