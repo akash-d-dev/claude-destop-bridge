@@ -3,6 +3,9 @@ require('dotenv').config()
 const express = require('express')
 const path = require('path')
 const { exec } = require('child_process')
+const { DeviceAccessService } = require('./auth/deviceAccessService')
+const { createRequireAuth } = require('./auth/authMiddleware')
+const { registerAuthRoutes } = require('./auth/authRoutes')
 const {
   ClaudeScreenStreamService
 } = require('./stream/claudeScreenStreamService')
@@ -15,6 +18,9 @@ const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS) || 2000
 const MAX_WAIT_MS = parseInt(process.env.MAX_WAIT_MS) || 300000 // 5 minutes
 const DONE_DELAY_MS = parseInt(process.env.DONE_DELAY_MS, 10) || 2000
 const STREAM_INTERVAL_MS = parseInt(process.env.STREAM_INTERVAL_MS, 10) || 1000
+const PASSCODE = process.env.PASSCODE || ''
+const ACCESS_TTL_HOURS = parseInt(process.env.ACCESS_TTL_HOURS, 10) || 24
+const ACCESS_TTL_MS = ACCESS_TTL_HOURS * 60 * 60 * 1000
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')))
@@ -24,19 +30,32 @@ app.use((req, res, next) => {
   next()
 })
 
+if (!PASSCODE) {
+  console.error('[AUTH] PASSCODE is required in .env')
+  process.exit(1)
+}
+
+const accessService = new DeviceAccessService({
+  passcode: PASSCODE,
+  sessionTtlMs: ACCESS_TTL_MS
+})
+const requireAuth = createRequireAuth(accessService)
+registerAuthRoutes(app, accessService)
+
 const screenStreamService = new ClaudeScreenStreamService({
   projectRoot: __dirname,
   intervalMs: STREAM_INTERVAL_MS
 })
-registerStreamRoutes(app, screenStreamService)
+registerStreamRoutes(app, screenStreamService, requireAuth)
 
 // Expose configuration to the frontend
-app.get('/config', (req, res) => {
+app.get('/config', requireAuth, (req, res) => {
   console.log(`[HTTP] GET /config -> ntfyTopic=${NTFY_TOPIC}`)
   res.json({
     ntfyTopic: NTFY_TOPIC,
     doneDelayMs: DONE_DELAY_MS,
-    streamIntervalMs: STREAM_INTERVAL_MS
+    streamIntervalMs: STREAM_INTERVAL_MS,
+    accessTtlMs: ACCESS_TTL_MS
   })
 })
 
@@ -151,7 +170,7 @@ function processMessage(message) {
 }
 
 // API endpoint to handle sending message
-app.post('/send', async (req, res) => {
+app.post('/send', requireAuth, async (req, res) => {
   const { message } = req.body
   console.log(`[HTTP] POST /send payload: ${JSON.stringify(req.body)}`)
 

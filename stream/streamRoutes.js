@@ -1,9 +1,12 @@
-function registerStreamRoutes(app, streamService) {
-  app.get('/stream/status', (req, res) => {
+function registerStreamRoutes(app, streamService, requireAuth) {
+  const guard =
+    typeof requireAuth === 'function' ? requireAuth : (req, res, next) => next()
+
+  app.get('/stream/status', guard, (req, res) => {
     res.json(streamService.getStatus())
   })
 
-  app.get('/stream/windows', async (req, res) => {
+  app.get('/stream/windows', guard, async (req, res) => {
     try {
       const windows = await streamService.listWindows()
       const selectedWindow = streamService.getSelectedWindow()
@@ -20,7 +23,7 @@ function registerStreamRoutes(app, streamService) {
     }
   })
 
-  app.get('/stream/displays', async (req, res) => {
+  app.get('/stream/displays', guard, async (req, res) => {
     try {
       const displays = await streamService.listDisplays()
       const selectedDisplay = streamService.getSelectedDisplay()
@@ -37,7 +40,7 @@ function registerStreamRoutes(app, streamService) {
     }
   })
 
-  app.post('/stream/select-window', async (req, res) => {
+  app.post('/stream/select-window', guard, async (req, res) => {
     try {
       const { windowId } = req.body || {}
 
@@ -75,7 +78,7 @@ function registerStreamRoutes(app, streamService) {
     }
   })
 
-  app.post('/stream/select-display', async (req, res) => {
+  app.post('/stream/select-display', guard, async (req, res) => {
     try {
       const { displayId } = req.body || {}
 
@@ -115,19 +118,19 @@ function registerStreamRoutes(app, streamService) {
     }
   })
 
-  app.post('/stream/start', (req, res) => {
+  app.post('/stream/start', guard, (req, res) => {
     streamService.start()
     console.log('[STREAM] Live view started.')
     res.json({ status: 'ok', ...streamService.getStatus() })
   })
 
-  app.post('/stream/stop', (req, res) => {
+  app.post('/stream/stop', guard, (req, res) => {
     streamService.stop()
     console.log('[STREAM] Live view stopped.')
     res.json({ status: 'ok', ...streamService.getStatus() })
   })
 
-  app.get('/stream/frame', async (req, res) => {
+  app.get('/stream/frame', guard, async (req, res) => {
     try {
       if (!streamService.isRunning()) {
         streamService.start()
