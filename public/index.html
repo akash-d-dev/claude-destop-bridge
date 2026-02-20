@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Bridge</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f7;
+        }
+        h1 {
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            max-width: 500px;
+            height: 150px;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+            resize: vertical;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #007aff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 500px;
+        }
+        button:hover {
+            background-color: #005bb5;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Claude Bridge</h1>
+    <textarea id="messageInput" placeholder="Type your message for Claude..."></textarea>
+    <button id="sendBtn">Send to Mac</button>
+    <div id="status"></div>
+
+    <script>
+        const sendBtn = document.getElementById('sendBtn');
+        const messageInput = document.getElementById('messageInput');
+        const statusDiv = document.getElementById('status');
+
+        sendBtn.addEventListener('click', async () => {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            statusDiv.textContent = "Sending...";
+            sendBtn.disabled = true;
+
+            try {
+                const response = await fetch('/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+
+                if (response.ok) {
+                    statusDiv.textContent = "Sent! Waiting for Claude...";
+                    messageInput.value = '';
+                } else {
+                    statusDiv.textContent = "Failed to send message.";
+                    sendBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error("Error sending message:", error);
+                statusDiv.textContent = "Error sending message.";
+                sendBtn.disabled = false;
+            }
+        });
+
+        // Fetch configuration from the server to get the NTFY_TOPIC
+        fetch('/config')
+            .then(res => res.json())
+            .then(config => {
+                const NTFY_TOPIC = config.ntfyTopic;
+                const eventSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.event === 'message' && data.message.includes('responded')) {
+                        statusDiv.textContent = "Done — check Claude app";
+                        sendBtn.disabled = false;
+                    }
+                };
+            })
+            .catch(err => console.error("Error fetching config:", err));
+    </script>
+</body>
+</html>
