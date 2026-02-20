@@ -12,7 +12,7 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 6px 20px 20px;
+            padding: 8px 16px 18px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -22,12 +22,12 @@
         }
         h1 {
             color: #f5f5f5;
-            margin: 4px 0 10px 0;
+            margin: 2px 0 8px 0;
         }
         #commandSection {
             width: 100%;
             max-width: 500px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         #commandControls {
             display: flex;
@@ -70,7 +70,7 @@
             max-width: 500px;
             height: 150px;
             padding: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             border: 1px solid #262626;
             border-radius: 8px;
             font-size: 16px;
@@ -93,29 +93,34 @@
             background-color: #1a1a1a;
         }
         #status {
-            margin-top: 20px;
+            width: 100%;
+            max-width: 500px;
+            margin: 8px 0 10px 0;
             font-size: 14px;
             color: #9ca3af;
         }
         #streamSection {
             width: 100%;
             max-width: 900px;
-            margin-top: 24px;
-            padding: 16px;
+            margin-top: 12px;
+            padding: 14px;
             border: 1px solid #262626;
             border-radius: 12px;
             background: #000;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         #streamSection h2 {
-            margin: 0 0 10px 0;
+            margin: 0 0 2px 0;
             font-size: 18px;
             color: #f5f5f5;
         }
         #streamControls {
             display: flex;
             gap: 10px;
-            margin-bottom: 10px;
+            margin: 0;
         }
         #streamControls button {
             max-width: none;
@@ -147,12 +152,12 @@
         #windowPickerRow {
             display: flex;
             gap: 10px;
-            margin-bottom: 10px;
+            margin: 0;
         }
         #displayPickerRow {
             display: flex;
             gap: 10px;
-            margin-bottom: 10px;
+            margin: 0;
         }
         #windowSelect {
             flex: 1;
@@ -199,11 +204,13 @@
         #streamStatus {
             font-size: 13px;
             color: #9ca3af;
-            margin-bottom: 10px;
+            margin: 0;
         }
         #streamFrame {
             display: none;
             width: 100%;
+            max-height: 62vh;
+            object-fit: contain;
             border-radius: 10px;
             border: 1px solid #262626;
             background: #000;
@@ -263,6 +270,30 @@
         #passcodeInput::placeholder {
             color: #6b7280;
         }
+        @media (max-width: 640px) {
+            body {
+                padding: 8px 12px 14px;
+            }
+            #commandControls,
+            #streamControls,
+            #windowPickerRow,
+            #displayPickerRow {
+                flex-direction: column;
+            }
+            #streamControls button {
+                width: 100%;
+                max-width: none;
+            }
+            #sendCommandBtn,
+            #refreshWindowsBtn,
+            #refreshDisplaysBtn {
+                width: 100%;
+                max-width: none;
+            }
+            #streamFrame {
+                max-height: 52vh;
+            }
+        }
     </style>
 </head>
 <body>
@@ -275,7 +306,10 @@
             <div id="authError"></div>
         </div>
     </div>
-    <h1>Claude Bridge</h1>
+    <!-- <h3>Claude Bridge</h3> -->
+    <textarea id="messageInput" placeholder="Type your message for Claude..."></textarea>
+    <button id="sendBtn">Send to Mac</button>
+    <div id="status"></div>
     <div id="commandSection">
         <div id="commandControls">
             <select id="commandSelect">
@@ -285,11 +319,10 @@
         </div>
         <div id="commandHint">Pick a command and send instantly, no typing needed.</div>
     </div>
-    <textarea id="messageInput" placeholder="Type your message for Claude..."></textarea>
-    <button id="sendBtn">Send to Mac</button>
-    <div id="status"></div>
     <div id="streamSection">
-        <h2>Claude Live View</h2>
+        <!-- <h2>Claude Live View</h2> -->
+        <img id="streamFrame" alt="Claude live stream preview">
+        <div id="streamStatus">Live view is off.</div>
         <div id="streamControls">
             <button id="toggleStreamBtn">Start Live View</button>
             <button id="fullscreenStreamBtn" disabled>Full Screen</button>
@@ -306,8 +339,6 @@
             </select>
             <button id="refreshDisplaysBtn">Refresh Displays</button>
         </div>
-        <div id="streamStatus">Live view is off.</div>
-        <img id="streamFrame" alt="Claude live stream preview">
     </div>
 
     <script>
