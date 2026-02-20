@@ -95,7 +95,20 @@
             gap: 10px;
             margin-bottom: 10px;
         }
+        #displayPickerRow {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
         #windowSelect {
+            flex: 1;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            min-width: 0;
+        }
+        #displaySelect {
             flex: 1;
             border: 1px solid #d1d5db;
             border-radius: 8px;
@@ -111,6 +124,16 @@
             margin: 0;
         }
         #refreshWindowsBtn:hover {
+            background-color: #374151;
+        }
+        #refreshDisplaysBtn {
+            background-color: #4b5563;
+            max-width: none;
+            width: auto;
+            flex: 0 0 auto;
+            margin: 0;
+        }
+        #refreshDisplaysBtn:hover {
             background-color: #374151;
         }
         #streamStatus {
@@ -144,6 +167,12 @@
             </select>
             <button id="refreshWindowsBtn">Refresh Windows</button>
         </div>
+        <div id="displayPickerRow">
+            <select id="displaySelect">
+                <option value="">Auto (All displays)</option>
+            </select>
+            <button id="refreshDisplaysBtn">Refresh Displays</button>
+        </div>
         <div id="streamStatus">Live view is off.</div>
         <img id="streamFrame" alt="Claude live stream preview">
     </div>
@@ -155,7 +184,9 @@
         const toggleStreamBtn = document.getElementById('toggleStreamBtn');
         const fullscreenStreamBtn = document.getElementById('fullscreenStreamBtn');
         const refreshWindowsBtn = document.getElementById('refreshWindowsBtn');
+        const refreshDisplaysBtn = document.getElementById('refreshDisplaysBtn');
         const windowSelect = document.getElementById('windowSelect');
+        const displaySelect = document.getElementById('displaySelect');
         const streamStatusDiv = document.getElementById('streamStatus');
         const streamFrame = document.getElementById('streamFrame');
         let doneDelayMs = 2000;
@@ -165,7 +196,9 @@
         let streamEnabled = false;
         let currentStreamMode = 'screen';
         let selectedWindow = null;
+        let selectedDisplay = null;
         let noWindowsDetected = false;
+        let noDisplaysDetected = false;
 
         function markDoneFromUiFallback() {
             statusDiv.textContent = "Done — check Claude app";
@@ -182,6 +215,7 @@
 
         function modeToLabel(mode) {
             if (mode === 'selected-window') return 'Selected window';
+            if (mode === 'selected-display') return 'Selected display';
             if (mode === 'claude-window' || mode === 'window') return 'Claude window';
             return 'Screen fallback';
         }
@@ -194,17 +228,28 @@
             return windowInfo.appName || `Window #${windowInfo.id}`;
         }
 
+        function selectedDisplayToLabel(displayInfo) {
+            if (!displayInfo) return 'Auto (All displays)';
+            const mainTag = displayInfo.isMain ? 'Main' : 'Secondary';
+            return `${mainTag} display ${displayInfo.width}x${displayInfo.height} @ (${displayInfo.x}, ${displayInfo.y})`;
+        }
+
         function updateStreamStatusText() {
             const modeText = modeToLabel(currentStreamMode);
-            const targetText = selectedWindowToLabel(selectedWindow);
+            const windowTargetText = selectedWindowToLabel(selectedWindow);
+            const displayTargetText = selectedDisplayToLabel(selectedDisplay);
             const noWindowsHint = noWindowsDetected
                 ? ' No windows detected yet. Grant Screen Recording permission to your terminal/Node process, then click Refresh Windows.'
                 : '';
+            const noDisplaysHint = noDisplaysDetected
+                ? ' No displays detected yet. Click Refresh Displays.'
+                : '';
+            const targetSummary = `Window target: ${windowTargetText}. Display target: ${displayTargetText}.`;
             if (streamEnabled) {
-                streamStatusDiv.textContent = `Live view is on (${modeText}). Target: ${targetText}.${noWindowsHint}`;
+                streamStatusDiv.textContent = `Live view is on (${modeText}). ${targetSummary}${noWindowsHint}${noDisplaysHint}`;
                 return;
             }
-            streamStatusDiv.textContent = `Live view is off. Target: ${targetText}.${noWindowsHint}`;
+            streamStatusDiv.textContent = `Live view is off. ${targetSummary}${noWindowsHint}${noDisplaysHint}`;
         }
 
         async function enterStreamFullscreen() {
@@ -229,13 +274,16 @@
             }
         }
 
-        function setStreamUiState(running, mode, selectedWindowOverride) {
+        function setStreamUiState(running, mode, selectedWindowOverride, selectedDisplayOverride) {
             streamEnabled = running;
             if (mode) {
                 currentStreamMode = mode;
             }
             if (typeof selectedWindowOverride !== 'undefined') {
                 selectedWindow = selectedWindowOverride;
+            }
+            if (typeof selectedDisplayOverride !== 'undefined') {
+                selectedDisplay = selectedDisplayOverride;
             }
 
             toggleStreamBtn.textContent = running ? 'Stop Live View' : 'Start Live View';
@@ -290,6 +338,29 @@
             }
         }
 
+        function populateDisplaySelect(displays, selectedDisplayId) {
+            displaySelect.innerHTML = '';
+
+            const autoOption = document.createElement('option');
+            autoOption.value = '';
+            autoOption.textContent = 'Auto (All displays)';
+            displaySelect.appendChild(autoOption);
+
+            displays.forEach((displayInfo) => {
+                const option = document.createElement('option');
+                option.value = String(displayInfo.id);
+                const mainTag = displayInfo.isMain ? 'Main' : 'Secondary';
+                option.textContent = `${mainTag} ${displayInfo.width}x${displayInfo.height} @ (${displayInfo.x}, ${displayInfo.y}) (#${displayInfo.id})`;
+                displaySelect.appendChild(option);
+            });
+
+            if (selectedDisplayId) {
+                displaySelect.value = String(selectedDisplayId);
+            } else {
+                displaySelect.value = '';
+            }
+        }
+
         async function loadWindowOptions() {
             const response = await fetch('/stream/windows');
             if (!response.ok) {
@@ -306,6 +377,26 @@
                 selectedWindow = windows.find((item) => item.id === selectedWindowId) || null;
             } else {
                 selectedWindow = null;
+            }
+            updateStreamStatusText();
+        }
+
+        async function loadDisplayOptions() {
+            const response = await fetch('/stream/displays');
+            if (!response.ok) {
+                throw new Error('Failed to load displays');
+            }
+
+            const payload = await response.json();
+            const displays = Array.isArray(payload.displays) ? payload.displays : [];
+            const selectedDisplayId = payload.selectedDisplayId || null;
+            noDisplaysDetected = displays.length === 0;
+            populateDisplaySelect(displays, selectedDisplayId);
+
+            if (selectedDisplayId) {
+                selectedDisplay = displays.find((item) => item.id === selectedDisplayId) || null;
+            } else {
+                selectedDisplay = null;
             }
             updateStreamStatusText();
         }
@@ -331,7 +422,42 @@
             }
 
             const payload = await response.json();
-            setStreamUiState(Boolean(payload.running), payload.mode, payload.selectedWindow || null);
+            setStreamUiState(
+                Boolean(payload.running),
+                payload.mode,
+                payload.selectedWindow || null,
+                payload.selectedDisplay || null
+            );
+            refreshStreamFrame();
+        }
+
+        async function setDisplaySelection(displayId) {
+            const response = await fetch('/stream/select-display', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ displayId })
+            });
+
+            if (!response.ok) {
+                let message = 'Failed to select display';
+                try {
+                    const errorPayload = await response.json();
+                    if (errorPayload && errorPayload.error) {
+                        message = errorPayload.error;
+                    }
+                } catch {
+                    // Ignore JSON parsing error.
+                }
+                throw new Error(message);
+            }
+
+            const payload = await response.json();
+            setStreamUiState(
+                Boolean(payload.running),
+                payload.mode,
+                payload.selectedWindow || null,
+                payload.selectedDisplay || null
+            );
             refreshStreamFrame();
         }
 
@@ -341,7 +467,12 @@
                 throw new Error('Failed to start stream');
             }
             const payload = await response.json();
-            setStreamUiState(true, payload.mode, payload.selectedWindow || null);
+            setStreamUiState(
+                true,
+                payload.mode,
+                payload.selectedWindow || null,
+                payload.selectedDisplay || null
+            );
             refreshStreamFrame();
             startFrameTimer();
         }
@@ -356,7 +487,12 @@
                 clearInterval(streamRefreshTimer);
                 streamRefreshTimer = null;
             }
-            setStreamUiState(false, payload.mode, payload.selectedWindow || null);
+            setStreamUiState(
+                false,
+                payload.mode,
+                payload.selectedWindow || null,
+                payload.selectedDisplay || null
+            );
         }
 
         async function initStreamStatus() {
@@ -364,7 +500,13 @@
                 const response = await fetch('/stream/status');
                 if (!response.ok) return;
                 const status = await response.json();
-                setStreamUiState(Boolean(status.running), status.mode, status.selectedWindow || null);
+                setStreamUiState(
+                    Boolean(status.running),
+                    status.mode,
+                    status.selectedWindow || null,
+                    status.selectedDisplay || null
+                );
+                await loadDisplayOptions();
                 await loadWindowOptions();
                 if (status.running) {
                     refreshStreamFrame();
@@ -423,6 +565,20 @@
             }
         });
 
+        refreshDisplaysBtn.addEventListener('click', async () => {
+            refreshDisplaysBtn.disabled = true;
+            displaySelect.disabled = true;
+            try {
+                await loadDisplayOptions();
+            } catch (error) {
+                console.error('Error refreshing displays:', error);
+                streamStatusDiv.textContent = 'Unable to refresh display list.';
+            } finally {
+                refreshDisplaysBtn.disabled = false;
+                displaySelect.disabled = false;
+            }
+        });
+
         windowSelect.addEventListener('change', async () => {
             const rawValue = windowSelect.value;
             const windowId = rawValue ? Number(rawValue) : null;
@@ -438,6 +594,24 @@
             } finally {
                 windowSelect.disabled = false;
                 refreshWindowsBtn.disabled = false;
+            }
+        });
+
+        displaySelect.addEventListener('change', async () => {
+            const rawValue = displaySelect.value;
+            const displayId = rawValue ? Number(rawValue) : null;
+
+            displaySelect.disabled = true;
+            refreshDisplaysBtn.disabled = true;
+            try {
+                await setDisplaySelection(displayId);
+            } catch (error) {
+                console.error('Error selecting display:', error);
+                streamStatusDiv.textContent = `Unable to select display: ${error.message}`;
+                await loadDisplayOptions();
+            } finally {
+                displaySelect.disabled = false;
+                refreshDisplaysBtn.disabled = false;
             }
         });
 

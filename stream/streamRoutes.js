@@ -20,6 +20,23 @@ function registerStreamRoutes(app, streamService) {
     }
   })
 
+  app.get('/stream/displays', async (req, res) => {
+    try {
+      const displays = await streamService.listDisplays()
+      const selectedDisplay = streamService.getSelectedDisplay()
+      console.log(
+        `[STREAM] Display list loaded. count=${displays.length} selectedDisplayId=${selectedDisplay ? selectedDisplay.id : 'none'}`
+      )
+      res.json({
+        displays,
+        selectedDisplayId: selectedDisplay ? selectedDisplay.id : null
+      })
+    } catch (error) {
+      console.error('[STREAM] Failed to list displays:', error)
+      res.status(500).json({ error: 'Failed to list displays' })
+    }
+  })
+
   app.post('/stream/select-window', async (req, res) => {
     try {
       const { windowId } = req.body || {}
@@ -55,6 +72,46 @@ function registerStreamRoutes(app, streamService) {
     } catch (error) {
       console.error('[STREAM] Failed to set selected window:', error)
       res.status(500).json({ error: 'Failed to set selected window' })
+    }
+  })
+
+  app.post('/stream/select-display', async (req, res) => {
+    try {
+      const { displayId } = req.body || {}
+
+      if (displayId === null || displayId === undefined || displayId === '') {
+        streamService.clearSelectedDisplay()
+        await streamService.captureFrame()
+        console.log('[STREAM] Cleared selected display. Using all-screen fallback.')
+        return res.json({ status: 'ok', ...streamService.getStatus() })
+      }
+
+      const parsedDisplayId = Number.parseInt(String(displayId), 10)
+      if (!Number.isFinite(parsedDisplayId) || parsedDisplayId <= 0) {
+        return res.status(400).json({
+          error: 'displayId must be a positive integer'
+        })
+      }
+
+      const displays = await streamService.listDisplays()
+      const selectedDisplay = displays.find(
+        (item) => item.id === parsedDisplayId
+      )
+      if (!selectedDisplay) {
+        return res.status(404).json({
+          error: 'Selected display not found. Refresh displays and select again.'
+        })
+      }
+
+      streamService.setSelectedDisplay(selectedDisplay)
+      await streamService.captureFrame()
+      console.log(
+        `[STREAM] Selected display id=${selectedDisplay.id} main=${selectedDisplay.isMain} size=${selectedDisplay.width}x${selectedDisplay.height}`
+      )
+      res.json({ status: 'ok', ...streamService.getStatus() })
+    } catch (error) {
+      console.error('[STREAM] Failed to set selected display:', error)
+      res.status(500).json({ error: 'Failed to set selected display' })
     }
   })
 

@@ -16,7 +16,9 @@ class ClaudeScreenStreamService {
     this.lastCaptureAt = null
     this.lastMode = 'screen'
     this.selectedWindow = null
+    this.selectedDisplay = null
     this.lastWindowCaptureFailureKey = null
+    this.lastDisplayCaptureFailureKey = null
   }
 
   async getClaudeWindowId() {
@@ -78,6 +80,43 @@ class ClaudeScreenStreamService {
     return windows
   }
 
+  parseDisplayListOutput(rawOutput) {
+    const lines = String(rawOutput || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const displays = []
+    const seenIds = new Set()
+
+    for (const line of lines) {
+      const [idPart, isMainPart, xPart, yPart, widthPart, heightPart] =
+        line.split('\t')
+      const id = Number.parseInt(idPart, 10)
+      if (!Number.isFinite(id) || id <= 0 || seenIds.has(id)) {
+        continue
+      }
+
+      seenIds.add(id)
+      displays.push({
+        id,
+        isMain: String(isMainPart) === '1',
+        x: Number.parseInt(xPart, 10) || 0,
+        y: Number.parseInt(yPart, 10) || 0,
+        width: Number.parseInt(widthPart, 10) || 0,
+        height: Number.parseInt(heightPart, 10) || 0
+      })
+    }
+
+    displays.sort((a, b) => {
+      if (a.isMain && !b.isMain) return -1
+      if (!a.isMain && b.isMain) return 1
+      return a.id - b.id
+    })
+
+    return displays
+  }
+
   async listWindows() {
     const swiftScriptPath = path.join(
       this.projectRoot,
@@ -116,6 +155,20 @@ class ClaudeScreenStreamService {
     }
   }
 
+  async listDisplays() {
+    const scriptPath = path.join(this.projectRoot, 'scripts', 'list_displays.swift')
+    try {
+      const { stdout } = await execFileAsync('swift', [scriptPath], {
+        cwd: this.projectRoot,
+        maxBuffer: 1024 * 1024
+      })
+      return this.parseDisplayListOutput(stdout)
+    } catch (error) {
+      console.warn('[STREAM] Failed to list displays via Swift.')
+      return []
+    }
+  }
+
   setSelectedWindow(windowInfo) {
     if (!windowInfo) {
       this.selectedWindow = null
@@ -144,6 +197,39 @@ class ClaudeScreenStreamService {
     }
 
     return { ...this.selectedWindow }
+  }
+
+  setSelectedDisplay(displayInfo) {
+    if (!displayInfo) {
+      this.selectedDisplay = null
+      return
+    }
+
+    const parsedId = Number.parseInt(String(displayInfo.id), 10)
+    if (!Number.isFinite(parsedId) || parsedId <= 0) {
+      throw new Error('Invalid selected display id')
+    }
+
+    this.selectedDisplay = {
+      id: parsedId,
+      isMain: Boolean(displayInfo.isMain),
+      x: Number.parseInt(String(displayInfo.x), 10) || 0,
+      y: Number.parseInt(String(displayInfo.y), 10) || 0,
+      width: Number.parseInt(String(displayInfo.width), 10) || 0,
+      height: Number.parseInt(String(displayInfo.height), 10) || 0
+    }
+  }
+
+  clearSelectedDisplay() {
+    this.selectedDisplay = null
+  }
+
+  getSelectedDisplay() {
+    if (!this.selectedDisplay) {
+      return null
+    }
+
+    return { ...this.selectedDisplay }
   }
 
   async captureFrame() {
@@ -189,11 +275,40 @@ class ClaudeScreenStreamService {
         }
       }
 
+      if (this.selectedDisplay && this.selectedDisplay.id) {
+        const displayId = this.selectedDisplay.id
+        try {
+          await this.runScreenCapture([
+            '-x',
+            '-t',
+            'jpg',
+            '-D',
+            String(displayId),
+            this.framePath
+          ])
+          this.lastMode = 'selected-display'
+          this.lastCaptureAt = Date.now()
+          this.lastDisplayCaptureFailureKey = null
+          return
+        } catch (error) {
+          const failureKey = `selected-display:${displayId}`
+          if (this.lastDisplayCaptureFailureKey !== failureKey) {
+            console.warn(
+              `[STREAM] Display capture failed for display id=${displayId}. Falling back to all screens.`
+            )
+            this.lastDisplayCaptureFailureKey = failureKey
+          }
+        }
+      }
+
       await this.runScreenCapture(['-x', '-t', 'jpg', this.framePath])
       this.lastMode = 'screen'
       this.lastCaptureAt = Date.now()
       if (!windowId) {
         this.lastWindowCaptureFailureKey = null
+      }
+      if (!this.selectedDisplay) {
+        this.lastDisplayCaptureFailureKey = null
       }
     } finally {
       this.captureInProgress = false
@@ -234,7 +349,8 @@ class ClaudeScreenStreamService {
       intervalMs: this.intervalMs,
       lastCaptureAt: this.lastCaptureAt,
       mode: this.lastMode,
-      selectedWindow: this.getSelectedWindow()
+      selectedWindow: this.getSelectedWindow(),
+      selectedDisplay: this.getSelectedDisplay()
     }
   }
 
