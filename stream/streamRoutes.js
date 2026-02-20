@@ -7,6 +7,9 @@ function registerStreamRoutes(app, streamService) {
     try {
       const windows = await streamService.listWindows()
       const selectedWindow = streamService.getSelectedWindow()
+      console.log(
+        `[STREAM] Window list loaded. count=${windows.length} selectedWindowId=${selectedWindow ? selectedWindow.id : 'none'}`
+      )
       res.json({
         windows,
         selectedWindowId: selectedWindow ? selectedWindow.id : null

@@ -79,16 +79,41 @@ class ClaudeScreenStreamService {
   }
 
   async listWindows() {
-    const scriptPath = path.join(
+    const swiftScriptPath = path.join(
+      this.projectRoot,
+      'scripts',
+      'list_windows.swift'
+    )
+
+    try {
+      const { stdout } = await execFileAsync('swift', [swiftScriptPath], {
+        cwd: this.projectRoot,
+        maxBuffer: 1024 * 1024
+      })
+
+      const windows = this.parseWindowListOutput(stdout)
+      if (windows.length > 0) {
+        return windows
+      }
+    } catch (error) {
+      console.warn('[STREAM] Swift window list failed, falling back to AppleScript.')
+    }
+
+    const appleScriptPath = path.join(
       this.projectRoot,
       'scripts',
       'list_windows.applescript'
     )
-    const { stdout } = await execFileAsync('osascript', [scriptPath], {
-      cwd: this.projectRoot,
-      maxBuffer: 1024 * 1024
-    })
-    return this.parseWindowListOutput(stdout)
+    try {
+      const { stdout } = await execFileAsync('osascript', [appleScriptPath], {
+        cwd: this.projectRoot,
+        maxBuffer: 1024 * 1024
+      })
+      return this.parseWindowListOutput(stdout)
+    } catch (error) {
+      console.warn('[STREAM] AppleScript window list failed.')
+      return []
+    }
   }
 
   setSelectedWindow(windowInfo) {

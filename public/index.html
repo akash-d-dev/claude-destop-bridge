@@ -165,6 +165,7 @@
         let streamEnabled = false;
         let currentStreamMode = 'screen';
         let selectedWindow = null;
+        let noWindowsDetected = false;
 
         function markDoneFromUiFallback() {
             statusDiv.textContent = "Done — check Claude app";
@@ -196,11 +197,14 @@
         function updateStreamStatusText() {
             const modeText = modeToLabel(currentStreamMode);
             const targetText = selectedWindowToLabel(selectedWindow);
+            const noWindowsHint = noWindowsDetected
+                ? ' No windows detected yet. Grant Screen Recording permission to your terminal/Node process, then click Refresh Windows.'
+                : '';
             if (streamEnabled) {
-                streamStatusDiv.textContent = `Live view is on (${modeText}). Target: ${targetText}.`;
+                streamStatusDiv.textContent = `Live view is on (${modeText}). Target: ${targetText}.${noWindowsHint}`;
                 return;
             }
-            streamStatusDiv.textContent = `Live view is off. Target: ${targetText}.`;
+            streamStatusDiv.textContent = `Live view is off. Target: ${targetText}.${noWindowsHint}`;
         }
 
         async function enterStreamFullscreen() {
@@ -295,6 +299,7 @@
             const payload = await response.json();
             const windows = Array.isArray(payload.windows) ? payload.windows : [];
             const selectedWindowId = payload.selectedWindowId || null;
+            noWindowsDetected = windows.length === 0;
             populateWindowSelect(windows, selectedWindowId);
 
             if (selectedWindowId) {
