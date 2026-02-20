@@ -47,6 +47,56 @@
             font-size: 14px;
             color: #666;
         }
+        #streamSection {
+            width: 100%;
+            max-width: 900px;
+            margin-top: 24px;
+            padding: 16px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            background: #fff;
+            box-sizing: border-box;
+        }
+        #streamSection h2 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #333;
+        }
+        #streamControls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        #toggleStreamBtn {
+            background-color: #111827;
+            margin: 0;
+        }
+        #toggleStreamBtn:hover {
+            background-color: #0b1220;
+        }
+        #fullscreenStreamBtn {
+            background-color: #4b5563;
+            margin: 0;
+        }
+        #fullscreenStreamBtn:hover {
+            background-color: #374151;
+        }
+        #fullscreenStreamBtn:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        #streamStatus {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+        #streamFrame {
+            display: none;
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            background: #000;
+        }
     </style>
 </head>
 <body>
@@ -54,18 +104,168 @@
     <textarea id="messageInput" placeholder="Type your message for Claude..."></textarea>
     <button id="sendBtn">Send to Mac</button>
     <div id="status"></div>
+    <div id="streamSection">
+        <h2>Claude Live View</h2>
+        <div id="streamControls">
+            <button id="toggleStreamBtn">Start Live View</button>
+            <button id="fullscreenStreamBtn" disabled>Full Screen</button>
+        </div>
+        <div id="streamStatus">Live view is off.</div>
+        <img id="streamFrame" alt="Claude live stream preview">
+    </div>
 
     <script>
         const sendBtn = document.getElementById('sendBtn');
         const messageInput = document.getElementById('messageInput');
         const statusDiv = document.getElementById('status');
+        const toggleStreamBtn = document.getElementById('toggleStreamBtn');
+        const fullscreenStreamBtn = document.getElementById('fullscreenStreamBtn');
+        const streamStatusDiv = document.getElementById('streamStatus');
+        const streamFrame = document.getElementById('streamFrame');
         let doneDelayMs = 2000;
+        let streamIntervalMs = 1000;
         let fallbackTimer = null;
+        let streamRefreshTimer = null;
+        let streamEnabled = false;
 
         function markDoneFromUiFallback() {
             statusDiv.textContent = "Done — check Claude app";
             sendBtn.disabled = false;
         }
+
+        function getFullscreenElement() {
+            return document.fullscreenElement || document.webkitFullscreenElement || null;
+        }
+
+        function updateFullscreenButtonLabel() {
+            fullscreenStreamBtn.textContent = getFullscreenElement() ? 'Exit Full Screen' : 'Full Screen';
+        }
+
+        async function enterStreamFullscreen() {
+            if (streamFrame.requestFullscreen) {
+                await streamFrame.requestFullscreen();
+                return;
+            }
+            if (streamFrame.webkitRequestFullscreen) {
+                streamFrame.webkitRequestFullscreen();
+                return;
+            }
+            throw new Error('Fullscreen not supported on this browser');
+        }
+
+        async function exitStreamFullscreen() {
+            if (document.exitFullscreen && document.fullscreenElement) {
+                await document.exitFullscreen();
+                return;
+            }
+            if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
+                document.webkitExitFullscreen();
+            }
+        }
+
+        function setStreamUiState(running, mode) {
+            streamEnabled = running;
+            toggleStreamBtn.textContent = running ? 'Stop Live View' : 'Start Live View';
+            fullscreenStreamBtn.disabled = !running;
+            if (running) {
+                const modeText = mode === 'window' ? 'Claude window' : 'Screen fallback';
+                streamStatusDiv.textContent = `Live view is on (${modeText}).`;
+                streamFrame.style.display = 'block';
+                return;
+            }
+            exitStreamFullscreen().catch(() => {});
+            streamStatusDiv.textContent = 'Live view is off.';
+            streamFrame.style.display = 'none';
+            streamFrame.removeAttribute('src');
+            updateFullscreenButtonLabel();
+        }
+
+        function refreshStreamFrame() {
+            if (!streamEnabled) return;
+            streamFrame.src = `/stream/frame?ts=${Date.now()}`;
+        }
+
+        function startFrameTimer() {
+            if (streamRefreshTimer) {
+                clearInterval(streamRefreshTimer);
+            }
+            streamRefreshTimer = setInterval(refreshStreamFrame, streamIntervalMs);
+        }
+
+        async function startStream() {
+            const response = await fetch('/stream/start', { method: 'POST' });
+            if (!response.ok) {
+                throw new Error('Failed to start stream');
+            }
+            const payload = await response.json();
+            setStreamUiState(true, payload.mode);
+            refreshStreamFrame();
+            startFrameTimer();
+        }
+
+        async function stopStream() {
+            const response = await fetch('/stream/stop', { method: 'POST' });
+            if (!response.ok) {
+                throw new Error('Failed to stop stream');
+            }
+            if (streamRefreshTimer) {
+                clearInterval(streamRefreshTimer);
+                streamRefreshTimer = null;
+            }
+            setStreamUiState(false);
+        }
+
+        async function initStreamStatus() {
+            try {
+                const response = await fetch('/stream/status');
+                if (!response.ok) return;
+                const status = await response.json();
+                setStreamUiState(Boolean(status.running), status.mode);
+                if (status.running) {
+                    refreshStreamFrame();
+                    startFrameTimer();
+                }
+            } catch (error) {
+                console.error('Error loading stream status:', error);
+            }
+        }
+
+        toggleStreamBtn.addEventListener('click', async () => {
+            toggleStreamBtn.disabled = true;
+            try {
+                if (streamEnabled) {
+                    await stopStream();
+                } else {
+                    await startStream();
+                }
+            } catch (error) {
+                console.error('Error toggling stream:', error);
+                streamStatusDiv.textContent = 'Unable to toggle live view.';
+            } finally {
+                toggleStreamBtn.disabled = false;
+            }
+        });
+
+        fullscreenStreamBtn.addEventListener('click', async () => {
+            if (fullscreenStreamBtn.disabled) return;
+            fullscreenStreamBtn.disabled = true;
+            try {
+                if (getFullscreenElement()) {
+                    await exitStreamFullscreen();
+                } else {
+                    await enterStreamFullscreen();
+                }
+                updateFullscreenButtonLabel();
+            } catch (error) {
+                console.error('Error toggling fullscreen:', error);
+                streamStatusDiv.textContent = 'Fullscreen is not supported on this browser.';
+            } finally {
+                fullscreenStreamBtn.disabled = !streamEnabled;
+            }
+        });
+
+        document.addEventListener('fullscreenchange', updateFullscreenButtonLabel);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButtonLabel);
 
         sendBtn.addEventListener('click', async () => {
             const message = messageInput.value.trim();
@@ -106,6 +306,7 @@
             .then(config => {
                 const NTFY_TOPIC = config.ntfyTopic;
                 doneDelayMs = Number(config.doneDelayMs) || 2000;
+                streamIntervalMs = Number(config.streamIntervalMs) || 1000;
                 const eventSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
@@ -117,6 +318,7 @@
                         sendBtn.disabled = false;
                     }
                 };
+                initStreamStatus();
             })
             .catch(err => console.error("Error fetching config:", err));
     </script>

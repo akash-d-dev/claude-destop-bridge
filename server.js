@@ -3,6 +3,10 @@ require('dotenv').config()
 const express = require('express')
 const path = require('path')
 const { exec } = require('child_process')
+const {
+  ClaudeScreenStreamService
+} = require('./stream/claudeScreenStreamService')
+const { registerStreamRoutes } = require('./stream/streamRoutes')
 
 const app = express()
 const PORT = process.env.PORT || 3456
@@ -10,6 +14,7 @@ const NTFY_TOPIC = process.env.NTFY_TOPIC || 'default-claude-bridge'
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS) || 2000
 const MAX_WAIT_MS = parseInt(process.env.MAX_WAIT_MS) || 300000 // 5 minutes
 const DONE_DELAY_MS = parseInt(process.env.DONE_DELAY_MS, 10) || 2000
+const STREAM_INTERVAL_MS = parseInt(process.env.STREAM_INTERVAL_MS, 10) || 1000
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')))
@@ -19,10 +24,20 @@ app.use((req, res, next) => {
   next()
 })
 
+const screenStreamService = new ClaudeScreenStreamService({
+  projectRoot: __dirname,
+  intervalMs: STREAM_INTERVAL_MS
+})
+registerStreamRoutes(app, screenStreamService)
+
 // Expose configuration to the frontend
 app.get('/config', (req, res) => {
   console.log(`[HTTP] GET /config -> ntfyTopic=${NTFY_TOPIC}`)
-  res.json({ ntfyTopic: NTFY_TOPIC, doneDelayMs: DONE_DELAY_MS })
+  res.json({
+    ntfyTopic: NTFY_TOPIC,
+    doneDelayMs: DONE_DELAY_MS,
+    streamIntervalMs: STREAM_INTERVAL_MS
+  })
 })
 
 // Centralized commands mapping
