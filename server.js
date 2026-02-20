@@ -73,13 +73,13 @@ const COMMANDS = {
     executable: 'swift',
     args: ['scripts/navigate_main_view.swift', 'up'],
     waitMs: 80,
-    description: 'Scroll up (4x up arrow)'
+    description: 'Scroll up (10x up arrow)'
   },
   '#down': {
     executable: 'swift',
     args: ['scripts/navigate_main_view.swift', 'down'],
     waitMs: 80,
-    description: 'Scroll down (4x down arrow)'
+    description: 'Scroll down (10x down arrow)'
   },
   '#end': {
     executable: 'swift',

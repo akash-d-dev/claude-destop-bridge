@@ -31,8 +31,8 @@ tell application "System Events"
     click at {clickX, clickY}
     delay 0.2
 
-    repeat 4 times
+    repeat 10 times
         key code 125
-        delay 0.04
+        delay 0.05
     end repeat
 end tell
