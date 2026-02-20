@@ -63,6 +63,11 @@ const COMMANDS = {
     script: 'scripts/stop_response.applescript',
     waitMs: 200,
     description: 'Stop current response'
+  },
+  '#clear': {
+    script: 'scripts/clear_input.applescript',
+    waitMs: 200,
+    description: 'Clear current input box'
   }
   // Add future commands here
 }

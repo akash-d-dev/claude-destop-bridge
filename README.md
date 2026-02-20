@@ -1,63 +1,124 @@
 # Claude Desktop Bridge
 
-A lightweight local server and web UI that bridges a phone browser to Claude Desktop running on a Mac. This allows you to use your Mac's MCP tools from your phone.
+A local bridge that lets you send prompts from your phone browser to Claude Desktop on your Mac, receive done notifications, and optionally watch a live view of your Mac screen/Claude window.
 
-## How it works
+## Features implemented
 
-1. You type a message in a simple web UI on your phone.
-2. The web UI sends the message to a local Node.js server running on your Mac.
-3. The server uses AppleScript to activate Claude Desktop and simulate typing your message.
-4. The server polls until Claude finishes generating the response.
-5. You receive a push notification on your phone via ntfy.sh.
-6. You can open the Claude mobile app to read the synced response.
+- Send prompts from web UI to Claude Desktop using AppleScript.
+- Push done notifications to `ntfy.sh` (`notification-only` mode; no inbound ntfy listener).
+- Centralized command system with UI command picker.
+- Built-in commands:
+  - `#new` -> opens a new Claude chat (`Cmd + Shift + O`).
+  - `#stop` -> sends `Esc` to stop the current Claude response.
+  - `#clear` -> clears the active Claude input box (`Cmd + A`, then `Delete`).
+- Live View streaming in UI:
+  - Start/stop live stream.
+  - Fullscreen stream view.
+  - Select a specific window to stream.
+  - Select a specific display/monitor to stream.
+  - Automatic fallback chain if capture target fails.
+- Passcode-protected access:
+  - Login overlay in UI.
+  - Secure `HttpOnly` session cookie.
+  - Session bound to `User-Agent`.
+  - Configurable access TTL (default 24 hours).
+- Session persistence across server restarts via `.data/sessions.json`.
+- Single in-flight message processing guard to avoid concurrent prompt collisions.
 
-## Prerequisites
+## Capture fallback behavior
 
-- **Tailscale**: Installed on both your Mac and phone, connected to the same Tailscale network.
-- **Node.js**: Installed on your Mac.
-- **Claude Desktop**: Installed and running on your Mac.
+Live frame capture attempts targets in this order:
 
-## Setup Instructions
+1. Selected window (if chosen)
+2. Claude window auto-detection
+3. Selected display (if chosen)
+4. Full-screen fallback
 
-1. Clone this repository and run `npm install`:
+## Requirements
+
+- macOS with Claude Desktop installed.
+- Node.js `18+` (native `fetch` is required).
+- Terminal app (or Node runtime host) with **Accessibility** permission.
+- Terminal app (or Node runtime host) with **Screen Recording** permission for streaming.
+- `swift` available (used for robust window/display listing scripts).
+
+## Setup
+
+1. Install dependencies:
    ```bash
-   git clone <repo-url>
-   cd claude-desktop-bridge
    npm install
    ```
 
-2. Copy `.env.example` to `.env` and fill out your unique topics:
+2. Create local env file:
    ```bash
    cp .env.example .env
    ```
 
-3. On your Mac, grant accessibility permissions to Terminal/Node:
-   - Go to System Settings → Privacy & Security → Accessibility.
-   - Add/enable Terminal (or whatever terminal app you are using to run the server). This is required for AppleScript to simulate keystrokes.
+3. Update `.env` values, especially:
+   - `PASSCODE`
+   - `NTFY_TOPIC`
 
-4. Start the server:
+4. Start server:
    ```bash
    node server.js
    ```
 
-5. On your phone browser, subscribe to your `NTFY_TOPIC` or enable notifications via the web UI at `https://ntfy.sh/<NTFY_TOPIC>`.
+5. Open UI:
+   - Local: `http://localhost:3456`
+   - Remote phone access (example): `http://<mac-tailscale-ip>:3456`
 
-6. On your phone browser, navigate to your Mac's Tailscale IP address with the port 3456:
-   ```
-   http://<mac-tailscale-ip>:3456
-   ```
+6. Unlock with passcode in UI, then send prompts/commands.
 
-7. Ensure Claude Desktop is open on your Mac with any necessary MCP servers connected.
+## Environment variables
 
-8. Type a message on your phone and hit Send! You can also use the ntfy app to send messages to your `NTFY_INPUT_TOPIC`.
+- `PORT`: HTTP server port.
+- `NTFY_TOPIC`: Topic used for done notifications.
+- `DONE_DELAY_MS`: Fixed delay before marking prompt as done and notifying.
+- `STREAM_INTERVAL_MS`: Frame refresh interval for live stream capture.
+- `PASSCODE`: Required passcode for device access.
+- `ACCESS_TTL_HOURS`: Session validity duration.
+- `SESSION_STORE_DIR`: Directory for persisted sessions.
+- `SESSION_STORE_FILE`: Session store filename.
+- `POLL_INTERVAL_MS`: Legacy value kept for compatibility.
+- `MAX_WAIT_MS`: Legacy value kept for compatibility.
 
-## Commands
+## UI usage
 
-- `#new`: Open a new chat in Claude Desktop.
-  - Usage: `#new` (opens a new chat) or `#new How are you?` (opens a new chat and types "How are you?")
+- **Send prompt:** Type text and click `Send to Mac`.
+- **Send command quickly:** Pick command from dropdown and click `Send Command`.
+  - Optional typed text is appended after the command.
+- **Live view:** Start/stop stream, optionally select window/display, and use fullscreen.
 
-## Limitations
+## API surface (high-level)
 
-- The server does not launch Claude; it must already be open.
-- Only one message can be processed at a time.
-- AppleScript heuristics are used to determine when Claude has finished generating. If Claude's UI changes, the `is_claude_done.applescript` might need tweaking.
+- Auth:
+  - `GET /auth/status`
+  - `POST /auth/login`
+  - `POST /auth/logout`
+- Messaging:
+  - `POST /send`
+  - `GET /config`
+- Stream:
+  - `GET /stream/status`
+  - `POST /stream/start`
+  - `POST /stream/stop`
+  - `GET /stream/frame`
+  - `GET /stream/windows`
+  - `POST /stream/select-window`
+  - `GET /stream/displays`
+  - `POST /stream/select-display`
+
+## Project structure
+
+- `server.js`: Main server, command handling, message flow, ntfy notifications.
+- `public/index.html`: Full frontend UI (auth, message send, command picker, live view).
+- `auth/`: Passcode auth, middleware, cookie/session handling, disk persistence.
+- `stream/`: Frame capture service and stream API routes.
+- `scripts/`: AppleScript/Swift automation helpers for Claude, windows, displays.
+
+## Notes and limitations
+
+- Claude Desktop must already be running.
+- Message completion uses a fixed delay (`DONE_DELAY_MS`) instead of dynamic UI detection.
+- Only one message/command is processed at a time.
+- If no windows are detected, grant Screen Recording permission and refresh window list.
