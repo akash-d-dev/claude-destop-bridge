@@ -59,6 +59,13 @@
         const sendBtn = document.getElementById('sendBtn');
         const messageInput = document.getElementById('messageInput');
         const statusDiv = document.getElementById('status');
+        let doneDelayMs = 2000;
+        let fallbackTimer = null;
+
+        function markDoneFromUiFallback() {
+            statusDiv.textContent = "Done — check Claude app";
+            sendBtn.disabled = false;
+        }
 
         sendBtn.addEventListener('click', async () => {
             const message = messageInput.value.trim();
@@ -77,6 +84,11 @@
                 if (response.ok) {
                     statusDiv.textContent = "Sent! Waiting for Claude...";
                     messageInput.value = '';
+                    if (fallbackTimer) {
+                        clearTimeout(fallbackTimer);
+                    }
+                    // Fallback for missed SSE events from ntfy.
+                    fallbackTimer = setTimeout(markDoneFromUiFallback, doneDelayMs + 1500);
                 } else {
                     statusDiv.textContent = "Failed to send message.";
                     sendBtn.disabled = false;
@@ -93,10 +105,14 @@
             .then(res => res.json())
             .then(config => {
                 const NTFY_TOPIC = config.ntfyTopic;
+                doneDelayMs = Number(config.doneDelayMs) || 2000;
                 const eventSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
                     if (data.event === 'message' && data.message.includes('responded')) {
+                        if (fallbackTimer) {
+                            clearTimeout(fallbackTimer);
+                        }
                         statusDiv.textContent = "Done — check Claude app";
                         sendBtn.disabled = false;
                     }
