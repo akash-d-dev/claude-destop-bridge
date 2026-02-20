@@ -68,6 +68,21 @@ const COMMANDS = {
     script: 'scripts/clear_input.applescript',
     waitMs: 200,
     description: 'Clear current input box'
+  },
+  '#up': {
+    script: 'scripts/scroll_up.applescript',
+    waitMs: 200,
+    description: 'Scroll up (4x up arrow)'
+  },
+  '#down': {
+    script: 'scripts/scroll_down.applescript',
+    waitMs: 200,
+    description: 'Scroll down (4x down arrow)'
+  },
+  '#end': {
+    script: 'scripts/jump_to_end.applescript',
+    waitMs: 200,
+    description: 'Jump to end (Cmd + Down)'
   }
   // Add future commands here
 }

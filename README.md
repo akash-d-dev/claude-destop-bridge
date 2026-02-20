@@ -11,6 +11,9 @@ A local bridge that lets you send prompts from your phone browser to Claude Desk
   - `#new` -> opens a new Claude chat (`Cmd + Shift + O`).
   - `#stop` -> sends `Esc` to stop the current Claude response.
   - `#clear` -> clears the active Claude input box (`Cmd + A`, then `Delete`).
+  - `#up` -> presses `Up Arrow` 4 times.
+  - `#down` -> presses `Down Arrow` 4 times.
+  - `#end` -> presses `Cmd + Down Arrow`.
 - Live View streaming in UI:
   - Start/stop live stream.
   - Fullscreen stream view.
