@@ -14,6 +14,7 @@ A local bridge that lets you send prompts from your phone browser to Claude Desk
   - `#up` -> presses `Up Arrow` 4 times.
   - `#down` -> presses `Down Arrow` 4 times.
   - `#end` -> presses `Cmd + Down Arrow`.
+  - `#enter` -> presses `Enter` to confirm focused action/tool call.
 - Live View streaming in UI:
   - Start/stop live stream.
   - Fullscreen stream view.

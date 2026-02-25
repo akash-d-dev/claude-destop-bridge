@@ -86,6 +86,11 @@ const COMMANDS = {
     args: ['scripts/navigate_main_view.swift', 'end'],
     waitMs: 80,
     description: 'Jump to end (Cmd + Down)'
+  },
+  '#enter': {
+    script: 'scripts/press_enter.applescript',
+    waitMs: 80,
+    description: 'Press Enter (confirm tool call)'
   }
   // Add future commands here
 }
